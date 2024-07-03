@@ -56,19 +56,83 @@ def showProjectList():
     window = tk.Toplevel(root)
     window.title("Project List")
 
-    project_listbox = tk.Listbox(window)
-    project_listbox.pack(fill=tk.BOTH, expand=True)
-
     for project_name in project_names:
-        project_listbox.insert(tk.END, project_name)
+        newButton = tk.Button(window, text=project_name, command=lambda name=project_name: openProject(name))
+        newButton.pack()
 
 
+def openStepDetails(project_name, step_name, sub_steps, approvals):
+    def markCompleted(step, sub_step, completed):
+        cursor.execute(f'''
+        UPDATE progress_{project_name} 
+        SET completed = ? 
+        WHERE step = ? AND sub_step = ?
+        ''', (completed, step, sub_step))
+        conn.commit()
 
+    window = tk.Toplevel(root)
+    window.title(f"Step Details: {step_name}")
+
+    step_frame = tk.LabelFrame(window, text="Sub-Steps")
+    step_frame.pack(fill="both", expand="yes")
+
+    for sub_step in sub_steps:
+        var = tk.BooleanVar()
+        cursor.execute(f'''
+        SELECT completed FROM progress_{project_name} 
+        WHERE step = ? AND sub_step = ?
+        ''', (step_name, sub_step))
+        result = cursor.fetchone()
+        if result:
+            var.set(result[0])
+        else:
+            cursor.execute(f'''
+            INSERT INTO progress_{project_name} (step, sub_step, created_time, target_time, actual_time, document_path, completed) 
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (step_name, sub_step, time.time(), time.time() + 7.862e+6, None, None, False))
+            conn.commit()
+
+        checkbox = tk.Checkbutton(step_frame, text=sub_step, variable=var,
+                                  command=lambda s=step_name, ss=sub_step, v=var: markCompleted(s, ss, v.get()))
+        checkbox.pack()
+
+    approval_frame = tk.LabelFrame(window, text="Approvals")
+    approval_frame.pack(fill="both", expand="yes")
+
+    for approval in approvals:
+        var = tk.BooleanVar()
+        cursor.execute(f'''
+        SELECT completed FROM progress_{project_name} 
+        WHERE step = ? AND sub_step = ?
+        ''', (step_name, approval))
+        result = cursor.fetchone()
+        if result:
+            var.set(result[0])
+        else:
+            cursor.execute(f'''
+            INSERT INTO progress_{project_name} (step, sub_step, created_time, target_time, actual_time, document_path, completed) 
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (step_name, approval, time.time(), time.time() + 7.862e+6, None, None, False))
+            conn.commit()
+
+        checkbox = tk.Checkbutton(approval_frame, text=approval, variable=var,
+                                  command=lambda s=step_name, ss=approval, v=var: markCompleted(s, ss, v.get()))
+        checkbox.pack()
+
+
+def openProject(project_name):
+    window = tk.Toplevel(root)
+    window.title(f"Project: {project_name}")
+
+    for step in steps:
+        step_button = tk.Button(window, text=step['name'],
+                                command=lambda s=step: openStepDetails(project_name, s['name'], s['sub_steps'], s.get('approval', [])))
+        step_button.pack(fill="both", expand="yes")
 
 
 def projectTop():
     def addProject(name, desc, topl):
-        cursor.execute(f"INSERT INTO projectList (name, desc,created_time,estimated_time) VALUES (?, ?,?,?)", (name, desc, time.time(), time.time() + 7.862e+6))
+        cursor.execute(f"INSERT INTO projectList (name, desc, created_time, estimated_time) VALUES (?, ?, ?, ?)", (name, desc, time.time(), time.time() + 7.862e+6))
         conn.commit()
         project_name = str(name).replace(" ", "_")
         cursor.execute(f'''
@@ -83,7 +147,7 @@ def projectTop():
             completed BOOLEAN
         )
         ''')
-        conn.commit()  # Ensure the changes are committed to the database
+        conn.commit()
         projectAdded = tk.Toplevel(topl)
         projectAdded.title("Project Added")
         newLabel = tk.Label(projectAdded, text="Project Added")
@@ -108,17 +172,10 @@ def projectTop():
     window.mainloop()
 
 
-
-
-
-
-
-
-createProject_button = tk.Button(root, text="Create New Project",command=projectTop)
+createProject_button = tk.Button(root, text="Create New Project", command=projectTop)
 createProject_button.pack()
 
 showProjects_button = tk.Button(root, text="Show Projects", command=showProjectList)
 showProjects_button.pack()
-
 
 root.mainloop()
