@@ -65,10 +65,17 @@ def openStepDetails(project_name, step_name, sub_steps, approvals):
     def markCompleted(step, sub_step, completed):
         cursor.execute(f'''
         UPDATE progress_{project_name} 
-        SET completed = ? 
+        SET completed = ?, actual_time = ?
         WHERE step = ? AND sub_step = ?
-        ''', (completed, step, sub_step))
+        ''', (completed, time.time() if completed else None, step, sub_step))
         conn.commit()
+
+    def saveProgress():
+        for checkbox, sub_step in sub_step_vars:
+            markCompleted(step_name, sub_step, checkbox.get())
+        for checkbox, approval in approval_vars:
+            markCompleted(step_name, approval, checkbox.get())
+        messagebox.showinfo("Info", "Progress Saved")
 
     window = tk.Toplevel(root)
     window.title(f"Step Details: {step_name}")
@@ -76,6 +83,7 @@ def openStepDetails(project_name, step_name, sub_steps, approvals):
     step_frame = tk.LabelFrame(window, text="Sub-Steps")
     step_frame.pack(fill="both", expand="yes")
 
+    sub_step_vars = []
     for sub_step in sub_steps:
         var = tk.BooleanVar()
         cursor.execute(f'''
@@ -92,13 +100,14 @@ def openStepDetails(project_name, step_name, sub_steps, approvals):
             ''', (step_name, sub_step, time.time(), time.time() + 7.862e+6, None, None, False))
             conn.commit()
 
-        checkbox = tk.Checkbutton(step_frame, text=sub_step, variable=var,
-                                  command=lambda s=step_name, ss=sub_step, v=var: markCompleted(s, ss, v.get()))
+        checkbox = tk.Checkbutton(step_frame, text=sub_step, variable=var)
         checkbox.pack()
+        sub_step_vars.append((var, sub_step))
 
     approval_frame = tk.LabelFrame(window, text="Approvals")
     approval_frame.pack(fill="both", expand="yes")
 
+    approval_vars = []
     for approval in approvals:
         var = tk.BooleanVar()
         cursor.execute(f'''
@@ -115,9 +124,12 @@ def openStepDetails(project_name, step_name, sub_steps, approvals):
             ''', (step_name, approval, time.time(), time.time() + 7.862e+6, None, None, False))
             conn.commit()
 
-        checkbox = tk.Checkbutton(approval_frame, text=approval, variable=var,
-                                  command=lambda s=step_name, ss=approval, v=var: markCompleted(s, ss, v.get()))
+        checkbox = tk.Checkbutton(approval_frame, text=approval, variable=var)
         checkbox.pack()
+        approval_vars.append((var, approval))
+
+    save_button = tk.Button(window, text="Save Progress", command=saveProgress)
+    save_button.pack()
 
 
 def openProject(project_name):
