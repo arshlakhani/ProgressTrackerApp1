@@ -63,11 +63,15 @@ def showProjectList():
 
 def openStepDetails(project_name, step_name, sub_steps, approvals):
     def markCompleted(step, sub_step, completed):
+        if completed:
+            completed_time = time.time()
+        else:
+            completed_time = None
         cursor.execute(f'''
         UPDATE progress_{project_name} 
-        SET completed = ?, actual_time = ?
+        SET completed = ?, completed_time = ?
         WHERE step = ? AND sub_step = ?
-        ''', (completed, time.time() if completed else None, step, sub_step))
+        ''', (completed, completed_time, step, sub_step))
         conn.commit()
 
     def saveProgress():
@@ -95,9 +99,9 @@ def openStepDetails(project_name, step_name, sub_steps, approvals):
             var.set(result[0])
         else:
             cursor.execute(f'''
-            INSERT INTO progress_{project_name} (step, sub_step, created_time, target_time, actual_time, document_path, completed) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (step_name, sub_step, time.time(), time.time() + 7.862e+6, None, None, False))
+            INSERT INTO progress_{project_name} (step, sub_step, created_time, target_time, actual_time, document_path, completed, completed_time) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (step_name, sub_step, time.time(), time.time() + 7.862e+6, None, None, False, None))
             conn.commit()
 
         checkbox = tk.Checkbutton(step_frame, text=sub_step, variable=var)
@@ -119,9 +123,9 @@ def openStepDetails(project_name, step_name, sub_steps, approvals):
             var.set(result[0])
         else:
             cursor.execute(f'''
-            INSERT INTO progress_{project_name} (step, sub_step, created_time, target_time, actual_time, document_path, completed) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (step_name, approval, time.time(), time.time() + 7.862e+6, None, None, False))
+            INSERT INTO progress_{project_name} (step, sub_step, created_time, target_time, actual_time, document_path, completed, completed_time) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (step_name, approval, time.time(), time.time() + 7.862e+6, None, None, False, None))
             conn.commit()
 
         checkbox = tk.Checkbutton(approval_frame, text=approval, variable=var)
@@ -141,6 +145,9 @@ def openProject(project_name):
                                 command=lambda s=step: openStepDetails(project_name, s['name'], s['sub_steps'], s.get('approval', [])))
         step_button.pack(fill="both", expand="yes")
 
+    download_button = tk.Button(window, text="Download Progress", command=lambda: downloadProgress(project_name))
+    download_button.pack(fill="both", expand="yes")
+
 
 def projectTop():
     def addProject(name, desc, topl):
@@ -156,10 +163,11 @@ def projectTop():
             target_time TEXT,
             actual_time TEXT,
             document_path TEXT,
-            completed BOOLEAN
+            completed BOOLEAN,
+            completed_time TEXT
         )
         ''')
-        conn.commit()
+        conn.commit()  # Ensure the changes are committed to the database
         projectAdded = tk.Toplevel(topl)
         projectAdded.title("Project Added")
         newLabel = tk.Label(projectAdded, text="Project Added")
@@ -182,6 +190,46 @@ def projectTop():
     projectSave_button.pack()
 
     window.mainloop()
+
+
+def downloadProgress(project_name):
+    cursor.execute(f"SELECT * FROM progress_{project_name}")
+    rows = cursor.fetchall()
+    progress_df = pd.DataFrame(rows, columns=["ID", "Step", "Sub-Step", "Created Time", "Target Time", "Actual Time", "Document Path", "Completed", "Completed Time"])
+
+    # Read the template Excel file
+    template_df = pd.read_excel(TrackerPath, sheet_name=None)
+
+    # Insert the progress data into the appropriate cells
+    for step in steps:
+        step_name = step['name']
+        sub_steps = step['sub_steps']
+        approvals = step.get('approval', [])
+
+        for sub_step in sub_steps:
+            progress_row = progress_df[(progress_df['Step'] == step_name) & (progress_df['Sub-Step'] == sub_step)]
+            if not progress_row.empty:
+                completed = progress_row['Completed'].values[0]
+                completed_time = progress_row['Completed Time'].values[0]
+                # Assuming you have a specific place to insert this data in the template
+                template_df['Sheet1'].loc[template_df['Sheet1']['Step'] == step_name, 'Completed'] = completed
+                template_df['Sheet1'].loc[template_df['Sheet1']['Step'] == step_name, 'Completed Time'] = pd.to_datetime(completed_time, unit='s')
+
+        for approval in approvals:
+            progress_row = progress_df[(progress_df['Step'] == step_name) & (progress_df['Sub-Step'] == approval)]
+            if not progress_row.empty:
+                completed = progress_row['Completed'].values[0]
+                completed_time = progress_row['Completed Time'].values[0]
+                # Assuming you have a specific place to insert this data in the template
+                template_df['Sheet1'].loc[template_df['Sheet1']['Step'] == step_name, 'Approval Completed'] = completed
+                template_df['Sheet1'].loc[template_df['Sheet1']['Step'] == step_name, 'Approval Completed Time'] = pd.to_datetime(completed_time, unit='s')
+
+    save_path = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")])
+    if save_path:
+        with pd.ExcelWriter(save_path) as writer:
+            for sheet_name, df in template_df.items():
+                df.to_excel(writer, sheet_name=sheet_name, index=False)
+        messagebox.showinfo("Info", f"Progress exported to {save_path}")
 
 
 createProject_button = tk.Button(root, text="Create New Project", command=projectTop)
